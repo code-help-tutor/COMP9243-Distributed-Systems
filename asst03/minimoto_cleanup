@@ -1,0 +1,41 @@
+#!/usr/bin/python3
+from commonlib import *
+
+def main():
+    """delete SQS"""
+    sqs = boto3_resource('sqs')
+    config = get_config()
+    queue = sqs.Queue(config[CONFIG_SQS_URL])
+    queue.delete()
+    """delete S3 buckets"""
+    s3 = boto3_resource('s3')
+    bucket_input = s3.Bucket(NAME_BUCKET_INPUT)
+    bucket_input.objects.all().delete()
+    bucket_input.delete()
+    bucket_output = s3.Bucket(NAME_BUCKET_OUTPUT)
+    bucket_output.objects.all().delete()
+    bucket_output.delete()
+    """terminate all EC2 instances in this group"""
+    ec2 = boto3_resource('ec2')
+    instances = ec2.instances.filter(
+        Filters = [
+            INSTANCE_FILTER_GROUP
+        ]
+    )
+    for instance in instances:
+        instance.terminate()
+    for instance in instances:
+        instance.wait_until_terminated()
+    """delete EC2 security_group"""
+    security_group = ec2.SecurityGroup(NAME_SECURITY_GROUP)
+    security_group.delete(GroupName = NAME_SECURITY_GROUP)
+    """delete transcode service image"""
+    transcode_service_image = ec2.Image(config[CONFIG_TRANSCODE_SERVICE_AMI])
+    transcode_service_image.deregister()
+    """delete transcode service image's snapshots"""
+    boto3_delete_snapshots(ec2, config[CONFIG_TRANSCODE_SERVICE_AMI])
+
+    clear_config()
+
+if __name__ == '__main__':
+    main()

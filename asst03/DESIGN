@@ -1,0 +1,70 @@
+we use python3 as the main programming language to implement assignment 3.
+we use a thrid party library 'Boto3' as the python3 implement of AWS CLI.
+
+all the files of this assignment:
+commonlib.py
+minimoto_setup
+minimoto_setup.py
+minimoto_client
+minimoto_watchdog
+minimoto_transcode
+minimoto_transcode.sh
+transcode.cron
+minimoto_cleanup
+Makefile
+DESIGN
+
+--setup
+    --save the name of keyfile passed by caller
+    --save 'aws_access_key_id' and 'aws_secret_access_key' passed by caller
+    --create 'SQS', save the 'sqsUrl'
+    --create 2 'input' and 'output' S3 buckets
+    --create a 'security_group' for all EC2 instance
+    --create an EC2 instance for 'client' with the specific AMI 'ami–96666ff5', setup python, boto3 environment, upload config file, client script
+    --create an EC2 instance for 'watchdog' with the specific AMI 'ami–96666ff5', setup python, boto3 environment, upload config file, watchdog script
+    --create the original EC2 instance for the 'transcode service' with the specific AMI 'ami–96666ff5', setup python, boto3, transcode environment, upload config file, transcode script
+    Particularlly, then create image from this origin, get a new AMI for other 'transcode service' instances in future. We create other instances with this new AMI, without setup anymore.
+
+--client
+    --upload image to 'input', using random name the temporary directory
+    --generate the message for this task and send it to 'SQS'
+    --using a timer to check the output directory if flag is --wait
+
+--transcode service
+    --use 'crontab' command to execute task(default every one minute) on each VM
+    --when start, check the flag to see whether this EC2 instance is transcoding
+    --if ture, stop; false, continue to do the real transcode task
+    --in the task,
+        --receive msg from 'SQS'
+            --main process to update the visibility timeout to 120s, using a 4s timer to continue to extend visibility timeout, until the encoding proccess is done.
+            if the instance is shutdown or other reasons that cannot transcode successfully, the message will back to sqs and other service will do the task.
+            --create a thread to do the transcode task
+    -- when the task is done, set the flag to 'idle' and ready to do next task
+
+--watchdog
+    --check the aggregate CPU usage
+    if ave cpu usage > 50% and sqs length == 0:
+        do nothing; all good
+
+    if ave cpu usage > 50% and sqs length > 0:
+        if stoped instance numbers > 0:
+            restart a stoped instance
+        else:
+            create a new EC2 instance, no more than --scale_to
+
+    if ave cpu_utilization < 50 and sqs length == 0:
+        shutdown all the idle EC2 instance, leave one(as the standby in 'setup')
+
+    if sqs length > 1:
+        if stoped instance numbers > 0:
+            restart a stoped instance
+        else:
+            create a new EC2 instance, no more than --scale_to
+
+--cleanup
+    --delete 'SQS'
+    --delete S3
+    --delete 'client', 'watchdog', all 'transcode service'
+    --delete security_group
+    --delete the AMI created by us
+    --others the snapshots using the AMI above
